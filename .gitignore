@@ -1,0 +1,21 @@
+## C# / Visual Studio
+bin/
+obj/
+.vs/
+packages/
+*.exe
+*.dll
+*.pdb
+*.user
+*.suo
+*.cache
+Debug/
+Release/
+TestResults/
+*.log
+
+## General
+*.tmp
+Thumbs.db
+
+*.zip

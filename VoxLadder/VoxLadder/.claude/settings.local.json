@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell:*)",
+      "Read(//d/OneDrive/FinLib Source Code/QXFinLib_Latest/QXFinLib/**)",
+      "Read(//d/OneDrive/Quant Algo Trading/FinLib Source Code/QXFinLib_Latest/QXFinLib/**)",
+      "Read(//d/OneDrive/Quant Algo Trading/Positional Systems/**)",
+      "Bash(ls -d \"D:/OneDrive/Quant Algo Trading/Positional Systems/VoxLadder/\"*/packages/)",
+      "Bash(ls -d \"D:/OneDrive/Quant Algo Trading/Positional Systems/VoxLadder/VoxLadder/\"*/packages/)",
+      "Bash(cp:*)",
+      "Bash(timeout 60 ./VoxLadder/bin/Debug/VoxLadder.exe:*)",
+      "Bash(./VoxLadder.exe:*)"
+    ]
+  }
+}
