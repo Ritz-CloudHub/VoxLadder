@@ -743,14 +743,12 @@ namespace QX.BackTesting.Strategies
 
 
         public PayOffMetrics GetPayOffMetrics(List<LinearSegment> linearSegments,
-                                              IBarData barData,
-                                              double underLyingPrice,
-                                              DateTime expiryDT,
-                                              bool useLogNormal = false,
-                                              double? indiaVix = null)
+                                      IBarData barData,
+                                      double underLyingPrice,
+                                      DateTime expiryDT,
+                                      bool useLogNormal = false,
+                                      double? indiaVix = null)
         {
-
-
             double maxProfit = double.NaN;
             double maxLoss = double.NaN;
             double riskReward = double.NaN;
@@ -778,13 +776,11 @@ namespace QX.BackTesting.Strategies
                 RightMostPayoff = RightMostPayOff
             };
 
-
-
             // Sort segments by MinSpot to ensure correct slope and vertex processing
             var orderedSegments = linearSegments.OrderBy(s => s.MinSpot).ToList();
             var DaysDiff = expiryDT - barData.DateTimeDT;
             double TTEinDays = DaysDiff.TotalDays;
-            
+
             Debug.Assert(TTEinDays > 0);
 
             double LTP = Math.Max(underLyingPrice, 1e-6);
@@ -801,8 +797,6 @@ namespace QX.BackTesting.Strategies
                 ? rightSeg.Intercept
                 : rightSeg.Slope > 0 ? double.PositiveInfinity : double.NegativeInfinity;
 
-
-
             // Compute MaxProfit, MaxLoss, RiskReward
             double leftSlope = orderedSegments[0].Slope;
             double rightSlope = orderedSegments[orderedSegments.Count - 1].Slope;
@@ -810,16 +804,13 @@ namespace QX.BackTesting.Strategies
             bool lossUnbounded = leftSlope > 0 || rightSlope < 0;
             bool profitUnbounded = leftSlope < 0 || rightSlope > 0;
 
-
             // Infinite Loss / profit
             maxLoss = lossUnbounded ? double.NegativeInfinity : double.NaN;
             maxProfit = profitUnbounded ? double.PositiveInfinity : double.NaN;
 
-
             var vertices = GetFiniteVertices(orderedSegments).ToList();
             vertices = vertices.OrderBy(v => v).Distinct().ToList();
             Debug.Assert(vertices.Count != 0);
-
 
             var payoffs = vertices.Select(v => GetPayoffAtSpot(v, orderedSegments)).ToList();
 
@@ -832,25 +823,21 @@ namespace QX.BackTesting.Strategies
 
             riskReward = double.IsNegativeInfinity(maxLoss) ? 0 : double.IsPositiveInfinity(maxProfit) ? double.PositiveInfinity : Math.Abs(maxProfit / maxLoss);
 
-
             payOffBenchmark.MaxLoss = maxLoss;
             payOffBenchmark.MaxProfit = maxProfit;
             payOffBenchmark.RiskReward = riskReward;
 
-
-            double ATM_IV = indiaVix.HasValue ? BlackScholesCalculator.GetAtmIVfromIndiaVix(indiaVix.Value, TTEinDays) 
+            double ATM_IV = indiaVix.HasValue ? BlackScholesCalculator.GetAtmIVfromIndiaVix(indiaVix.Value, TTEinDays)
                                               : BlackScholesCalculator.GetAtmIV(underLyingPrice, barData.DateTimeDT, expiryDT);
 
             double dailyVolatility = ATM_IV / Math.Sqrt(365);
 
-          
             if (!useLogNormal)
             {
                 double STDdev = dailyVolatility * Math.Sqrt(TTEinDays);
                 double AbsStdev = LTP * STDdev;
-                
-                Debug.Assert(AbsStdev > 0);
 
+                Debug.Assert(AbsStdev > 0);
 
                 if (!double.IsPositiveInfinity(maxProfit))
                 {
@@ -864,26 +851,18 @@ namespace QX.BackTesting.Strategies
                     PML = ComputeNormalProbOverIntervals(maxLossIntervals, LTP, AbsStdev);
                 }
 
-
-
                 var positiveIntervals = GetPositivePayoffIntervals(orderedSegments, false);
                 POP = ComputeNormalProbOverIntervals(positiveIntervals, LTP, AbsStdev);
                 POL = 100 - POP;
-
 
                 payOffBenchmark.POL = POL;
                 payOffBenchmark.POP = POP;
                 payOffBenchmark.PML = PML;
                 payOffBenchmark.PMP = PMP;
 
-
-                // Check unbounded segments for non-constant payoff
-                if (orderedSegments[0].MinSpot == double.NegativeInfinity && Math.Abs(orderedSegments[0].Slope) > 1e-6 ||
-                    orderedSegments[orderedSegments.Count - 1].MaxSpot == double.PositiveInfinity && Math.Abs(orderedSegments[orderedSegments.Count - 1].Slope) > 1e-6)
-                {
-                    return payOffBenchmark;
-                }
-
+                // [FIX #2] Removed early return for unbounded slopes.
+                // Integration is clamped to [LTP-6σ, LTP+6σ], so unbounded payoff
+                // outside this range is irrelevant (probability mass < 10^-9).
 
                 double lowerBound = Math.Max(LTP - 6 * AbsStdev, 0);
                 double upperBound = LTP + 6 * AbsStdev;
@@ -893,10 +872,33 @@ namespace QX.BackTesting.Strategies
                     double pdf = Normal.PDF(LTP, AbsStdev, spot);
                     return payoff * pdf;
                 };
-                EV = GaussKronrodRule.Integrate(integrand, lowerBound, upperBound, out double errorEstimate, out double subintervalsUsed, targetRelativeError: 1e-8);
-                if (double.IsNaN(EV))
-                {
 
+                // [FIX #4] Split integration at every vertex (kink point).
+                // Each sub-interval has a smooth integrand (linear payoff × Gaussian),
+                // so GK achieves full accuracy regardless of segment count.
+                var breakpoints = new List<double> { lowerBound };
+                breakpoints.AddRange(vertices.Where(v => v > lowerBound && v < upperBound));
+                breakpoints.Add(upperBound);
+
+                EV = 0;
+                bool integrationFailed = false;
+                for (int i = 0; i < breakpoints.Count - 1; i++)
+                {
+                    double segEV = GaussKronrodRule.Integrate(integrand, breakpoints[i], breakpoints[i + 1],
+                        out double errorEstimate, out double subintervalsUsed, targetRelativeError: 1e-8);
+
+                    if (double.IsNaN(segEV))
+                    {
+                        integrationFailed = true;
+                        break;
+                    }
+                    EV += segEV;
+                }
+
+                if (integrationFailed)
+                {
+                    // [FIX #3] Reset EV to 0 before fallback accumulation.
+                    EV = 0;
                     foreach (var segment in orderedSegments)
                     {
                         double minSpot = segment.MinSpot;
@@ -915,13 +917,12 @@ namespace QX.BackTesting.Strategies
                         }
                         else
                         {
-
                             prob = Normal.CDF(LTP, AbsStdev, maxSpot) - Normal.CDF(LTP, AbsStdev, minSpot);
-                            if (prob <= 0) continue; // Skip if probability is negligible
+                            if (prob <= 0) continue;
                             double midSpot = (minSpot + maxSpot) / 2;
                             payoff = GetPayoffAtSpot(midSpot, orderedSegments);
                         }
-                        if (prob <= 0) continue; // Skip if probability is negligible
+                        if (prob <= 0) continue;
                         EV += prob * payoff;
                     }
                 }
@@ -951,19 +952,14 @@ namespace QX.BackTesting.Strategies
                 POP = ComputeLogNormalProbOverIntervals(positiveIntervals, mu_log, sigma);
                 POL = 100 - POP;
 
-
                 payOffBenchmark.POL = POL;
                 payOffBenchmark.POP = POP;
                 payOffBenchmark.PML = PML;
                 payOffBenchmark.PMP = PMP;
 
-                if (orderedSegments[0].MinSpot == double.NegativeInfinity && Math.Abs(orderedSegments[0].Slope) > 1e-6 ||
-                   orderedSegments[orderedSegments.Count - 1].MaxSpot == double.PositiveInfinity && Math.Abs(orderedSegments[orderedSegments.Count - 1].Slope) > 1e-6)
-                {
-                    //Console.WriteLine("Warning: Unbounded segment has non-constant payoff, returning NaN for EV.");
-                    return payOffBenchmark;
-                }
-
+                // [FIX #2] Removed early return for unbounded slopes.
+                // Integration is clamped to [1e-6, exp(mu_log + 6σ)], so unbounded payoff
+                // outside this range is irrelevant.
 
                 double lowerBound = 1e-6;
                 double upperBound = Math.Exp(mu_log + 6 * sigma);
@@ -975,10 +971,30 @@ namespace QX.BackTesting.Strategies
                     return payoff * pdf;
                 };
 
-                EV = GaussKronrodRule.Integrate(integrand, lowerBound, upperBound, out double errorEstimate, out double subintervalsUsed, targetRelativeError: 1e-8);
-                if (double.IsNaN(EV))
-                {
+                // [FIX #4] Split integration at every vertex (kink point).
+                var breakpoints = new List<double> { lowerBound };
+                breakpoints.AddRange(vertices.Where(v => v > lowerBound && v < upperBound));
+                breakpoints.Add(upperBound);
 
+                EV = 0;
+                bool integrationFailed = false;
+                for (int i = 0; i < breakpoints.Count - 1; i++)
+                {
+                    double segEV = GaussKronrodRule.Integrate(integrand, breakpoints[i], breakpoints[i + 1],
+                        out double errorEstimate, out double subintervalsUsed, targetRelativeError: 1e-8);
+
+                    if (double.IsNaN(segEV))
+                    {
+                        integrationFailed = true;
+                        break;
+                    }
+                    EV += segEV;
+                }
+
+                if (integrationFailed)
+                {
+                    // [FIX #3] Reset EV to 0 before fallback accumulation.
+                    EV = 0;
                     foreach (var segment in orderedSegments)
                     {
                         double minSpot = segment.MinSpot;
@@ -998,25 +1014,23 @@ namespace QX.BackTesting.Strategies
                         else
                         {
                             prob = LogNormal.CDF(maxSpot, mu_log, sigma) - LogNormal.CDF(minSpot, mu_log, sigma);
-                            if (prob <= 0) continue; // Skip if probability is negligible
+                            if (prob <= 0) continue;
                             double midSpot = (minSpot + maxSpot) / 2;
                             payoff = GetPayoffAtSpot(midSpot, orderedSegments);
                         }
-                        if (prob <= 0) continue; // Skip if probability is negligible
+                        if (prob <= 0) continue;
                         EV += prob * payoff;
                     }
                 }
 
                 payOffBenchmark.ExpectedValue = EV;
-
-
             }
 
-
             double edgeFactor = (double.IsNegativeInfinity(maxLoss)) ? double.NaN : EV / -maxLoss;
+            // [FIX #1] Assign edgeFactor to the output struct.
+            payOffBenchmark.EdgeFactor = edgeFactor;
 
             return payOffBenchmark;
-
         }
 
 
