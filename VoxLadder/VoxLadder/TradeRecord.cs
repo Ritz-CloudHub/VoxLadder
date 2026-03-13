@@ -167,7 +167,7 @@ namespace QX.OptionsBTTestApp.RD
         public double SpreadPnL => CurrentPnL;  // Now spread = full trade (far leg is separate trade)
 		public double RealisedPnL => OptionsInfo.Where(o => o.Status == Status.Closed).Sum(o => o.CurrentPnL);
 		// OLD: public bool IsPartiallyBooked => OptionsInfo?.Any(o => o.Status == Status.Closed) == true && OptionsInfo?.Any(o => o.Status == Status.Open) == true;
-		public bool IsPartiallyBooked => false;  // No more partial booking — far leg is separate trade
+		public bool IsPartiallyBooked => false;  // No more partial booking ï¿½ far leg is separate trade
 
 
     }
