@@ -1,21 +1,90 @@
-## C# / Visual Studio
+# ============================================
+# ZScore — .gitignore
+# Standard: C# + Python baseline
+# ============================================
+
+# --- Root Level Junk ---
+~syncthing~*
+*.tmp
+*.zip
+.claude/
+Thumbs.db
+desktop.ini
+.DS_Store
+ehthumbs.db
+$RECYCLE.BIN/
+*.onedrive
+
+# --- Cache / Data Files ---
+Cache/
+*.dat
+
+# --- C# / .NET Build Artifacts ---
 bin/
 obj/
-.vs/
-packages/
+Debug/
+Release/
+x64/
+x86/
 *.exe
 *.dll
 *.pdb
-*.user
-*.suo
 *.cache
-Debug/
-Release/
-TestResults/
+*.ilk
 *.log
+*.lib
+*.exp
+*.app
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vs/
+*.rsuser
+packages/
+*.nupkg
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+[Bb]uildlog.*
+*.csproj.user
+*.pidb
+*.svclog
+*.scc
+TestResults/
 
-## General
-*.tmp
-Thumbs.db
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+ENV/
+dist/
+build/
+*.egg-info/
+*.egg
+*.whl
+.ipynb_checkpoints/
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+.mypy_cache/
 
-*.zip
+# --- R ---
+.Rhistory
+.RData
+.Rproj.user/
+
+# --- Editor / IDE ---
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
