@@ -306,14 +306,7 @@ namespace QX.BackTesting.Strategies
         private double PeakWeeklyMargin = 0;
         private double BlockedMargin = 0;
         private double DailyMargin = 0;
-
-        public bool SuppressConsoleOutput { get; set; } = false;
-        public bool SuppressCsvOutput { get; set; } = false;
-
-        private readonly List<(DateTime Date, double Ret)> DailyRetHistory = new List<(DateTime, double)>();
-        private readonly List<(DateTime Date, double Ret)> ExpiryRetHistory = new List<(DateTime, double)>();
-        private readonly List<(DateTime Date, double Margin)> WeeklyMargin = new List<(DateTime, double)>();
-
+       
         private bool firstPass = true;
         private bool logDailyPayOff = false;
         private bool isDayFinalised = false;
@@ -650,9 +643,83 @@ namespace QX.BackTesting.Strategies
             if (nextBarData == null)
             {
                 ExportTradeRecordsToCsv(TradeRecords);
-                if (!SuppressConsoleOutput) GeneratePerformanceMetrics(DailyRetHistory, isSpotPoints: false, isDaily: true);
-                if (!SuppressConsoleOutput) Console.WriteLine("\n── Option Trade Performance ──");
-                if (!SuppressConsoleOutput) GeneratePerformanceMetrics(ExpiryRetHistory, isSpotPoints: false, isDaily: false);
+
+                // === OPTUNA METRICS OUTPUT — FULL METRICS ===
+                {
+                    var allTrades = TradeRecords
+                        .Where(t => t.Status == Status.Closed)
+                        .OrderBy(t => t.ExitTime)
+                        .ToList();
+
+                    int totalTrades = allTrades.Count;
+                    if (totalTrades == 0)
+                    {
+                        Console.WriteLine($"OPTUNA_METRICS|NetProfit=0|Sharpe=0|MaxDDPct=0|Calmar=0|PF=0|WinRate=0|Trades=0|AvgWin=0|AvgLoss=0|MaxDDAbs=0|SLF={StopLossFactor}|Swing={SwingExitPct}|POP={TargetPOP}|BPR={BuyPremiumRatio}|LTPrem={TargetLadderTradePremium}|LTPB={LadderTradePBMult}|LTSL={LadderTradeSLPct}|LTSpot={LadderTradeSpotThreshold}|PremFloorAdj={PremiumFloorAdjs}|SellAdj={SellPremiumAdjs}|BuyAdj={BuyPremiumAdjs}|WidthAdj={MaxWidthAdjs}");
+                    }
+                    else
+                    {
+                        // Net PnL per trade (after costs)
+                        var tradePnLs = allTrades.Select(t => t.CurrentPnL - t.TransactionCost - t.SlippageCost).ToList();
+                        double netProfit = tradePnLs.Sum();
+
+                        // Win/Loss stats
+                        var winnerPnLs = tradePnLs.Where(p => p > 0).ToList();
+                        var loserPnLs = tradePnLs.Where(p => p <= 0).ToList();
+                        int winCount = winnerPnLs.Count;
+                        double winRate = (double)winCount / totalTrades * 100.0;
+                        double avgWin = winnerPnLs.Any() ? winnerPnLs.Average() : 0;
+                        double avgLoss = loserPnLs.Any() ? loserPnLs.Average() : 0;
+                        double grossProfit = winnerPnLs.Any() ? winnerPnLs.Sum() : 0;
+                        double grossLoss = loserPnLs.Any() ? Math.Abs(loserPnLs.Sum()) : 0;
+                        double profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 999.0;
+
+                        // Equity curve & Max Drawdown
+                        double peak = 0;
+                        double maxDD = 0;
+                        double cumPnL = 0;
+                        var dailyPnL = new Dictionary<DateTime, double>();
+
+                        foreach (var pnl in tradePnLs)
+                        {
+                            cumPnL += pnl;
+                            if (cumPnL > peak) peak = cumPnL;
+                            double dd = peak - cumPnL;
+                            if (dd > maxDD) maxDD = dd;
+                        }
+
+                        // Build daily returns for Sharpe
+                        foreach (var trade in allTrades)
+                        {
+                            var day = trade.ExitTime.Date;
+                            double pnl = trade.CurrentPnL - trade.TransactionCost - trade.SlippageCost;
+                            if (dailyPnL.ContainsKey(day))
+                                dailyPnL[day] += pnl;
+                            else
+                                dailyPnL[day] = pnl;
+                        }
+
+                        // Sharpe Ratio (daily returns, annualised)
+                        double sharpe = 0;
+                        if (dailyPnL.Count > 1)
+                        {
+                            var returns = dailyPnL.Values.ToList();
+                            double mean = returns.Average();
+                            double stdDev = Math.Sqrt(returns.Select(r => (r - mean) * (r - mean)).Sum() / (returns.Count - 1));
+                            sharpe = stdDev > 0 ? (mean / stdDev) * Math.Sqrt(252) : 0;
+                        }
+
+                        // MaxDD as percentage of peak equity (use initial capital of 500000 as base)
+                        double capitalBase = 500000;
+                        double maxDDPct = (capitalBase + peak) > 0 ? (maxDD / (capitalBase + peak)) * 100.0 : 0;
+
+                        // Calmar Ratio (annualised return / max DD absolute)
+                        double totalDays = (allTrades.Last().ExitTime - allTrades.First().EntryTime).TotalDays;
+                        double annualisedReturn = totalDays > 0 ? (netProfit / totalDays) * 365.0 : 0;
+                        double calmar = maxDD > 0 ? annualisedReturn / maxDD : 0;
+
+                        Console.WriteLine($"OPTUNA_METRICS|NetProfit={netProfit:F2}|Sharpe={sharpe:F4}|MaxDDPct={maxDDPct:F2}|Calmar={calmar:F4}|PF={profitFactor:F2}|WinRate={winRate:F2}|Trades={totalTrades}|AvgWin={avgWin:F2}|AvgLoss={avgLoss:F2}|MaxDDAbs={maxDD:F2}|SLF={StopLossFactor}|Swing={SwingExitPct}|POP={TargetPOP}|BPR={BuyPremiumRatio}|LTPrem={TargetLadderTradePremium}|LTPB={LadderTradePBMult}|LTSL={LadderTradeSLPct}|LTSpot={LadderTradeSpotThreshold}|PremFloorAdj={PremiumFloorAdjs}|SellAdj={SellPremiumAdjs}|BuyAdj={BuyPremiumAdjs}|WidthAdj={MaxWidthAdjs}");
+                    }
+                }
             }
 
 
@@ -824,10 +891,9 @@ namespace QX.BackTesting.Strategies
             AdxDailySpot.OverWriteNew(devBar);
             AdxDailySpot.Commit(barData.DateTimeDT.Date);
            
-            LogDailySpotBar();
+            LogDailySpotBar();            
             isDayFinalised = true;
 
-            DailyRetHistory.Add((CurrentDate, DayNetPnL));
         }
 
         public void FinalizeExpiry(IBarData barData)
@@ -862,8 +928,8 @@ namespace QX.BackTesting.Strategies
             PrevExpiryCumulativePnL = CumulativePnL;
             PrevTradeCount = TotalTradeCount;
 
-            ExpiryRetHistory.Add((CurrentExpiryDT.Date, ExpiryNetPnL));
-            WeeklyMargin.Add((CurrentExpiryDT.Date, PeakWeeklyMargin));
+
+           
         }
       
 
@@ -967,108 +1033,8 @@ namespace QX.BackTesting.Strategies
 
         #endregion
 
-        #region Performance Metrics
 
-        private List<(DateTime Date, double Ret)> GetDailyReturnHistory(List<(DateTime Date, double Ret)> returnHistory)
-        {
-            var daily = returnHistory
-                .GroupBy(x => x.Date.Date)
-                .Select(g => (
-                    Date: g.Key,
-                    Ret: g.Sum(x => x.Ret),
-                    TradeCount: g.Count(),
-                    WinCount: g.Count(x => x.Ret > 0),
-                    LossCount: g.Count(x => x.Ret < 0)))
-                .OrderBy(x => x.Date)
-                .ToList();
-
-            return daily.Select(x => (x.Date, x.Ret)).ToList();
-        }
-
-        public void GeneratePerformanceMetrics(List<(DateTime Date, double Ret)> returnHistory, bool isSpotPoints, bool isDaily)
-        {
-            if (!SuppressConsoleOutput)
-            {
-                Console.OutputEncoding = System.Text.Encoding.UTF8;
-                var standardOutput = new System.IO.StreamWriter(Console.OpenStandardOutput());
-                standardOutput.AutoFlush = true;
-                Console.SetOut(standardOutput);
-            }
-
-            var dailyRetHist = isSpotPoints ? GetDailyReturnHistory(returnHistory) : returnHistory;
-
-            if (dailyRetHist.Count == 0)
-            {
-                Console.WriteLine("No data available.");
-                return;
-            }
-            double annScale = isDaily ? 365 : 52;
-            var sorted = dailyRetHist.OrderBy(x => x.Date).ToList();
-            DateTime first = sorted.First().Date;
-            DateTime last = sorted.Last().Date;
-            double years = (last - first).TotalDays / 365.25;
-
-            var returns = sorted.Select(x => x.Ret).ToList();
-            if (!isSpotPoints)
-            {
-                // 90th percentile of PeakWeeklyMargins
-                double perc = 0.90;
-                var sortedMargins = WeeklyMargin.Select(w => w.Margin).OrderBy(m => m).ToList();
-                int idxPerc = (int)Math.Ceiling(sortedMargins.Count * perc) - 1;
-                double margin = sortedMargins[Math.Max(0, idxPerc)];
-                returns = returns.Select(r => r * 100 / margin).ToList();
-            }
-
-            int n = returns.Count;
-            double totalRet = returns.Sum();
-            double meanRet = totalRet / n;
-            // Equity curve for drawdown
-            double peak = 0;
-            double maxDD = 0;
-            double current = 0;
-            foreach (var r in returns)
-            {
-                current += r;
-                if (current > peak)
-                    peak = current;
-                double dd = (peak - current);
-                if (dd > maxDD)
-                    maxDD = dd;
-            }
-            double annualisedRet = years > 0 ? totalRet / years : 0;
-            double calmar = maxDD > 0 ? annualisedRet / maxDD : 0;
-            // Profit / Loss stats
-            var profits = returns.Where(r => r > 0).ToList();
-            var losses = returns.Where(r => r < 0).ToList();
-            double totalProfit = profits.Sum();
-            double totalLoss = losses.Sum();
-            double avgProfit = profits.Any() ? totalProfit / dailyRetHist.Count : 0;
-            double avgLoss = losses.Any() ? totalLoss / dailyRetHist.Count : 0;
-            double plRatio = Math.Abs(totalLoss) > 1e-10 ? totalProfit / Math.Abs(totalLoss) : 0;
-            // Existing metrics
-            double stdDev = Math.Sqrt(returns.Sum(r => Math.Pow(r - meanRet, 2)) / (n - 1));
-            double sharpe = stdDev > 0 ? meanRet * Math.Sqrt(annScale) / stdDev : 0;
-            int negCount = losses.Count;
-            double downStd = negCount > 0 ? Math.Sqrt(returns.Sum(r => Math.Min(0, r) * Math.Min(0, r)) / negCount) : 0;
-            double sortino = downStd > 0 ? meanRet * Math.Sqrt(annScale) / downStd : 0;
-            if (!SuppressConsoleOutput)
-            {
-                Console.WriteLine("┌─────────────────────────────────────────────────────────────┐");
-                Console.WriteLine($"│ No of years          {years,12:F2}                               │");
-                Console.WriteLine($"│ Sharpe               {sharpe,12:F2}                               │");
-                Console.WriteLine($"│ Sortino              {sortino,12:F2}                               │");
-                Console.WriteLine($"│ Calmar               {calmar,12:F2}                               │");
-                Console.WriteLine($"│ Total Return         {totalRet,12:F2}                               │");
-                Console.WriteLine($"│ Max Drawdown         {maxDD,12:F2}                               │");
-                Console.WriteLine($"│ Annualised Return    {annualisedRet,12:F2}                               │");
-                Console.WriteLine($"│ Avg Profit           {avgProfit,12:F2}                               │");
-                Console.WriteLine($"│ Avg Loss             {avgLoss,12:F2}                               │");
-                Console.WriteLine($"│ Profit / Loss Ratio  {plRatio,12:F2}                               │");
-                Console.WriteLine("└─────────────────────────────────────────────────────────────┘");
-            }
-        }
-
-        #endregion
+     
 
         private List<PortfolioPosition> BuildPortfolioPositionsFromOpenTrades()
         {
@@ -1144,15 +1110,14 @@ namespace QX.BackTesting.Strategies
                                   "Vix,VixFast,VixSlow," +
                                   "ObvFast,ObvSlow," +
                                   "RunningSignal," +
-                                  "upSwing,downSwing,BearDivergence," +
+                                  "upSwing, downSwing, BearDivergence," +
                                   "IsBull,IsBear,MostFavSpot," +
                                   "RefSpot," +
                                   "RefTime," +
-                                  "DeltaSwing," +
-                                  "Signal,PrevSignal,RunningSignalCount");
+                                  "DeltaSwing");
                     _sn.Flush();
 
-                    string indicatorFile = @"TrendAtTradePass.csv";
+                    string indicatorFile = @"IndicatorFile.csv";
                     _snt = new StreamWriter(indicatorFile, append: false);
                     _snt.WriteLine("DateTime,Spot," +
                                   "FutVolume,FutAvgVol," +

@@ -123,8 +123,7 @@ namespace QX.BackTesting.Strategies
             PrevSignal = Signal;
             Signal = isBull ? 1 : isBear ? -1 : 0;
             //Signal = 0;
-            LogTrendSignals(barData, emaGap, deltaSwing, upSwing, downSwing, isBull, isBear, bearDivergence,
-                             Signal, PrevSignal, RunningSignal, RunningSignalCount, ReferenceSpot, MostFavSpot, ReferenceTime);
+            LogTrendSignals(barData, emaGap, deltaSwing, upSwing, downSwing, isBull, isBear, bearDivergence);
 
 
         }
@@ -204,16 +203,12 @@ namespace QX.BackTesting.Strategies
         }
 
 
-        public void LogTrendSignals(IBarData barData,
+        public void LogTrendSignals(IBarData barData,                                     
                                     double emaGap,
-                                    double deltaSwing,
-                                    bool upSwing, bool downSwing,
-                                    bool isBull, bool isBear,
-                                    bool bearDivergence,
-                                    double signal, double prevSignal,
-                                    int runningSignal, int runningSignalCount,
-                                    double referenceSpot, double mostFavSpot,
-                                    DateTime referenceTime)
+                                    double deltaSwing, 
+                                    bool upSwing, bool downSwing, 
+                                    bool isBull, bool isBear, 
+                                    bool bearDivergence)
         {
 
 
@@ -224,33 +219,30 @@ namespace QX.BackTesting.Strategies
             bool noPosition = !TradeRecords.Any(t => t.Status == Status.Open);
 
             IndicatorValues = $"{barData.DateTimeDT}," +
-                                       $"{barData.Close:F2}," +
-                                       $"{CustomBarFutVolumes.Last():F0}," +
-                                       $"{AvgVolSMA:F0}," +
-                                       $"{EMAFast[0]:F2}," +
-                                       $"{EMASlow[0]:F2}," +
-                                       $"{emaGap:F4}," +
-                                       $"{(AdxDailySpot.CurrentTempADX * (AdxDailySpot.CurrentTempPlusDI >= AdxDailySpot.CurrentTempMinusDI ? 1.0 : -1.0)):F2}," +
-                                       $"{((AdxCustomSpot.CurrentPlusDI > AdxCustomSpot.CurrentMinusDI ? 1 : -1) * AdxCustomSpot[0]):F2}," +
-                                       $"{RSI[0]:F2}," +
-                                       $"{CustomBarVixCloses.Last():F2}," +
-                                       $"{VixEMAFast[0]:F2}," +
-                                       $"{VixEMASlow[0]:F2}," +
-                                       $"{ObvEMAFast[0]:F2}," +
-                                       $"{ObvEMASlow[0]:F2}," +
-                                       $"{runningSignal}," +
-                                       $"{(upSwing ? 1 : 0)}," +
-                                       $"{(downSwing ? 1 : 0)}," +
-                                       $"{(bearDivergence ? 1 : 0)}," +
-                                       $"{(isBull ? 1 : 0)}," +
-                                       $"{(isBear ? 1 : 0)}," +
-                                       $"{mostFavSpot:F2}," +
-                                       $"{referenceSpot:F2}," +
-                                       $"{referenceTime}," +
-                                       $"{deltaSwing:F2}," +
-                                       $"{signal}," +
-                                       $"{prevSignal}," +
-                                       $"{runningSignalCount}";
+                              $"{barData.Close:F2}," +
+                              $"{CustomBarFutVolumes.Last():F0}," +
+                              $"{AvgVolSMA:F0}," +
+                              $"{EMAFast[0]:F2}," +
+                              $"{EMASlow[0]:F2}," +
+                              $"{emaGap:F4}," +
+                              $"{(AdxDailySpot.CurrentTempADX * (AdxDailySpot.CurrentTempPlusDI >= AdxDailySpot.CurrentTempMinusDI ? 1.0 : -1.0)):F2}," +
+                              $"{((AdxCustomSpot.CurrentPlusDI > AdxCustomSpot.CurrentMinusDI ? 1 : -1) * AdxCustomSpot[0]):F2}," +
+                              $"{RSI[0]:F2}," +
+                              $"{CustomBarVixCloses.Last():F2}," +
+                              $"{VixEMAFast[0]:F2}," +
+                              $"{VixEMASlow[0]:F2}," +
+                              $"{ObvEMAFast[0]:F2}," +
+                              $"{ObvEMASlow[0]:F2}," +
+                              $"{RunningSignal}," +
+                              $"{(upSwing ? 1 : 0)}," +
+                              $"{(downSwing ? 1 : 0)}," +
+                              $"{(bearDivergence ? 1 : 0)}," +
+                              $"{(isBull ? 1 : 0)}," +
+                              $"{(isBear ? 1 : 0)}," +
+                              $"{MostFavSpot:F2}," +
+                              $"{ReferenceSpot:F2}," +
+                              $"{ReferenceTime}," +
+                              $"{deltaSwing:F2}";
 
 
 

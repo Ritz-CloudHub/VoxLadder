@@ -339,22 +339,22 @@ namespace QX.OptionsBTTestApp.RD
             }
 
 
-            // Console output for Optuna parsing (legacy block — replaced by GeneratePerformanceMetrics)
-            //if (!isOptunaMode)
-            //{
-            //    Console.WriteLine("===OPTUNA_METRICS_START===");
-            //    string[] keysToOutput = new string[] {
-            //        "NetProfit", "TotalProfitLoss", "MaxDrawDown", "MaxDrawDownPercentage",
-            //        "SharpeRatio", "WinRate", "LossRate", "ProfitFactor",
-            //        "TotalNumberOfTrades", "AverageTrade", "LargestLoss", "LargestProfit"
-            //    };
-            //    foreach (var key in keysToOutput)
-            //    {
-            //        if (statistics.ContainsKey(key))
-            //            Console.WriteLine($"METRIC|{key}|{statistics[key]}");
-            //    }
-            //    Console.WriteLine("===OPTUNA_METRICS_END===");
-            //}
+            // Console output for Optuna parsing (legacy block — suppressed in OptunaMode)
+            if (!isOptunaMode)
+            {
+                Console.WriteLine("===OPTUNA_METRICS_START===");
+                string[] keysToOutput = new string[] {
+                    "NetProfit", "TotalProfitLoss", "MaxDrawDown", "MaxDrawDownPercentage",
+                    "SharpeRatio", "WinRate", "LossRate", "ProfitFactor",
+                    "TotalNumberOfTrades", "AverageTrade", "LargestLoss", "LargestProfit"
+                };
+                foreach (var key in keysToOutput)
+                {
+                    if (statistics.ContainsKey(key))
+                        Console.WriteLine($"METRIC|{key}|{statistics[key]}");
+                }
+                Console.WriteLine("===OPTUNA_METRICS_END===");
+            }
 
 
         }
